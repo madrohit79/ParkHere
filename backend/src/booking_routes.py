@@ -69,6 +69,7 @@ def estimate_booking():
     return ok(result)
 
 
+@bp.post('')
 @bp.post('/')
 @auth_required()
 @roles('customer')
