@@ -1,8 +1,9 @@
-// Normalize base URL:
-// 1. Trim whitespace
-// 2. Remove any trailing slashes
-// 3. Remove trailing '/api' if present so that endpoints starting with '/api' never create '/api/api'
-const rawBase = (import.meta.env.VITE_API_URL || '').trim();
+// Determine base URL:
+// In production builds, default to the deployed Render backend if VITE_API_URL is not explicitly set.
+// In local development, default to '' so Vite's proxy forwards /api calls to http://127.0.0.1:5000.
+const rawBase = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://parkhere-api-addc.onrender.com' : '')).trim();
+
+// Normalize base URL: strip trailing slashes, and strip trailing '/api' so endpoints starting with '/api' never create '/api/api'
 const API_BASE = rawBase.replace(/\/+$/, '').replace(/\/api$/, '');
 
 /**
@@ -36,8 +37,8 @@ export async function apiRequest(endpoint, { method = 'GET', body = null, header
   try {
     response = await fetch(requestUrl, config);
   } catch (networkErr) {
-    const isLocal = !API_BASE || API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
-    const msg = isLocal
+    const isDev = import.meta.env.DEV;
+    const msg = isDev
       ? 'Unable to reach the server. Please ensure the backend is running on http://localhost:5000.'
       : 'Unable to reach the server. Please check your network connection or verify that the backend service is running.';
     throw new Error(msg);
@@ -48,11 +49,11 @@ export async function apiRequest(endpoint, { method = 'GET', body = null, header
     data = await response.json();
   } catch (err) {
     const isServerError = response.status >= 500;
-    const isLocal = !API_BASE || API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
+    const isDev = import.meta.env.DEV;
     data = {
       success: false,
       error: isServerError
-        ? (isLocal
+        ? (isDev
             ? `Backend server is unavailable (Status ${response.status}). Please make sure your backend server is running on http://localhost:5000.`
             : `Backend server error (Status ${response.status}). Please try again later.`)
         : 'Failed to parse server response'
