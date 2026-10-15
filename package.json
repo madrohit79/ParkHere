@@ -1,0 +1,14 @@
+{
+  "name": "parkhere",
+  "version": "2.0.0",
+  "description": "ParkHere parking management system with Flask API and React frontend",
+  "private": true,
+  "scripts": {
+    "backend": "cd backend && python app.py",
+    "db:init": "cd backend && python scripts/init_db.py",
+    "frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build"
+  },
+  "keywords": ["dbms", "postgresql", "parking-management", "flask"],
+  "license": "ISC"
+}

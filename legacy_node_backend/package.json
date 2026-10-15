@@ -1,0 +1,21 @@
+{
+  "name": "parkhere-backend",
+  "version": "1.0.0",
+  "description": "Backend API for ParkHere parking management and reservation system",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:init": "node scripts/init-db.js",
+    "test:smoke": "node scripts/smoke-test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  }
+}

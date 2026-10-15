@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background-color: #FFFAEB;
+  color: #2B2B2B;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+/* Custom focus style adhering to prompt guidelines */
+*:focus-visible {
+  outline: 2px solid #D97706;
+  outline-offset: 2px;
+}
