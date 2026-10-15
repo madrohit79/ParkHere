@@ -9,6 +9,8 @@ bp=Blueprint('admin',__name__)
 @auth_required()
 @roles('platform_admin')
 def guard_admin():
+    if request.method == 'OPTIONS':
+        return None
     return None
 
 @bp.get('/stats')

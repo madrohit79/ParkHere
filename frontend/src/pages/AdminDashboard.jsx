@@ -11,20 +11,22 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function loadStats() {
-      try {
-        const res = await apiRequest('/api/admin/stats');
-        if (res.success) {
-          setStats(res.data);
-        }
-      } catch (err) {
-        setError(err.message || 'Failed to load system statistics');
-      } finally {
-        setLoading(false);
+  async function loadStats() {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await apiRequest('/api/admin/stats');
+      if (res.success) {
+        setStats(res.data);
       }
+    } catch (err) {
+      setError(err.message || 'Failed to load system statistics');
+    } finally {
+      setLoading(false);
     }
+  }
 
+  useEffect(() => {
     loadStats();
   }, []);
 
@@ -65,41 +67,62 @@ export function AdminDashboard() {
         )}
       </div>
 
-      {error && <Alert type="error" message={error} />}
+      {error && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl">
+          <div className="text-xs font-medium text-rose-900">{error}</div>
+          <Button variant="secondary" size="sm" onClick={loadStats}>
+            Retry Connection
+          </Button>
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4 border-l-4 border-l-amber-500">
           <div className="text-xs font-bold uppercase tracking-wider text-charcoalMuted">Total Platform Users</div>
-          <div className="text-3xl font-black text-charcoal mt-2">{users?.total_users || 0}</div>
+          <div className="text-3xl font-black text-charcoal mt-2">
+            {stats ? (users?.total_users ?? 0) : '—'}
+          </div>
           <div className="text-xs text-charcoalMuted mt-1">
-            {users?.customers_count || 0} drivers, {users?.org_admins_count || 0} orgs, {users?.owners_count || 0} owners
+            {stats
+              ? `${users?.customers_count || 0} drivers, ${users?.org_admins_count || 0} orgs, ${users?.owners_count || 0} owners`
+              : (error ? 'Data unavailable' : 'Loading...')}
           </div>
         </Card>
 
         <Card className="p-4 border-l-4 border-l-emerald-500">
           <div className="text-xs font-bold uppercase tracking-wider text-charcoalMuted">Parking Lots Listed</div>
-          <div className="text-3xl font-black text-charcoal mt-2">{locations?.total_locations || 0}</div>
+          <div className="text-3xl font-black text-charcoal mt-2">
+            {stats ? (locations?.total_locations ?? 0) : '—'}
+          </div>
           <div className="text-xs text-charcoalMuted mt-1">
-            {locations?.active_locations || 0} active, {locations?.total_locations || 0} total
+            {stats
+              ? `${locations?.active_locations || 0} active, ${locations?.total_locations || 0} total`
+              : (error ? 'Data unavailable' : 'Loading...')}
           </div>
         </Card>
 
         <Card className="p-4 border-l-4 border-l-blue-500">
           <div className="text-xs font-bold uppercase tracking-wider text-charcoalMuted">Total Bookings</div>
-          <div className="text-3xl font-black text-charcoal mt-2">{bookings?.total_bookings || 0}</div>
+          <div className="text-3xl font-black text-charcoal mt-2">
+            {stats ? (bookings?.total_bookings ?? 0) : '—'}
+          </div>
           <div className="text-xs text-charcoalMuted mt-1">
-            {bookings?.active_sessions || 0} active now, {bookings?.completed_bookings || 0} completed
+            {stats
+              ? `${bookings?.active_sessions || 0} active now, ${bookings?.completed_bookings || 0} completed`
+              : (error ? 'Data unavailable' : 'Loading...')}
           </div>
         </Card>
 
         <Card className="p-4 border-l-4 border-l-purple-500">
           <div className="text-xs font-bold uppercase tracking-wider text-charcoalMuted">Invoiced Gross Volume</div>
           <div className="text-3xl font-black text-charcoal mt-2">
-            ₹{Number(revenue?.gross_revenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {stats
+              ? `₹${Number(revenue?.gross_revenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+              : '—'}
           </div>
           <div className="text-xs text-charcoalMuted mt-1">
-            Base charges + overtime penalties
+            {stats ? 'Base charges + overtime penalties' : (error ? 'Data unavailable' : 'Loading...')}
           </div>
         </Card>
       </div>

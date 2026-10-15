@@ -74,6 +74,8 @@ def auth_required(optional=False):
     def decorator(fn):
         @wraps(fn)
         def wrapped(*args, **kwargs):
+            if request.method == 'OPTIONS':
+                return fn(*args, **kwargs)
             header = request.headers.get('Authorization', '')
             token = header[7:].strip() if header.startswith('Bearer ') else None
             g.user = None
@@ -95,6 +97,8 @@ def roles(*allowed):
     def decorator(fn):
         @wraps(fn)
         def wrapped(*args, **kwargs):
+            if request.method == 'OPTIONS':
+                return fn(*args, **kwargs)
             user = getattr(g, 'user', None)
             if not user:
                 return jsonify(success=False, error='Authentication required'), 401
@@ -108,6 +112,8 @@ def roles(*allowed):
 def approved_provider(fn):
     @wraps(fn)
     def wrapped(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return fn(*args, **kwargs)
         user = getattr(g, 'user', None)
         if not user:
             return jsonify(success=False, error='Authentication required'), 401
