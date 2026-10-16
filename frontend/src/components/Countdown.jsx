@@ -1,15 +1,28 @@
 import React, { useState, useEffect } from 'react';
 
-export function Countdown({ deadline, serverTime, onExpire }) {
+export function Countdown({ deadline, targetTime, serverTime, label, onExpire }) {
+  const effectiveDeadline = deadline || targetTime;
+
   // Compute difference between client clock and server authoritative time
-  const [clockOffset] = useState(() => {
+  const [clockOffset, setClockOffset] = useState(() => {
     if (!serverTime) return 0;
-    return new Date(serverTime).getTime() - Date.now();
+    const s = new Date(serverTime).getTime();
+    return isNaN(s) ? 0 : s - Date.now();
   });
 
-  const targetMs = new Date(deadline).getTime();
+  useEffect(() => {
+    if (serverTime) {
+      const s = new Date(serverTime).getTime();
+      if (!isNaN(s)) {
+        setClockOffset(s - Date.now());
+      }
+    }
+  }, [serverTime]);
 
   function getRemainingSeconds() {
+    if (!effectiveDeadline) return 0;
+    const targetMs = new Date(effectiveDeadline).getTime();
+    if (isNaN(targetMs)) return 0;
     const currentAdjustedTime = Date.now() + clockOffset;
     return Math.max(0, Math.floor((targetMs - currentAdjustedTime) / 1000));
   }
@@ -32,14 +45,35 @@ export function Countdown({ deadline, serverTime, onExpire }) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [deadline, serverTime]);
+  }, [effectiveDeadline, clockOffset]);
 
-  const minutes = Math.floor(secondsLeft / 60);
-  const seconds = secondsLeft % 60;
+  if (!effectiveDeadline) {
+    return (
+      <div className="inline-flex items-center gap-1.5 font-mono px-3 py-1.5 rounded-md border text-sm font-semibold bg-stone-100 text-charcoalMuted border-warmgrey">
+        <span>--:--</span>
+      </div>
+    );
+  }
+
+  const targetMs = new Date(effectiveDeadline).getTime();
+  if (isNaN(targetMs)) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[Countdown] Invalid deadline timestamp provided:', effectiveDeadline);
+    }
+    return (
+      <div className="inline-flex items-center gap-1.5 font-mono px-3 py-1.5 rounded-md border text-sm font-semibold bg-stone-100 text-charcoalMuted border-warmgrey" title="Invalid timestamp">
+        <span>--:--</span>
+      </div>
+    );
+  }
+
+  const safeSeconds = isNaN(secondsLeft) || secondsLeft < 0 ? 0 : secondsLeft;
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
   const formatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-  const isUrgent = secondsLeft <= 180 && secondsLeft > 0; // <= 3 minutes
-  const isExpired = secondsLeft <= 0;
+  const isUrgent = safeSeconds <= 180 && safeSeconds > 0; // <= 3 minutes
+  const isExpired = safeSeconds <= 0;
 
   return (
     <div className={`inline-flex items-center gap-1.5 font-mono px-3 py-1.5 rounded-md border text-sm font-bold shadow-xs ${

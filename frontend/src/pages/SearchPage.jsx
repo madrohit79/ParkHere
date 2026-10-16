@@ -216,7 +216,7 @@ export function SearchPage() {
                           {loc.locality}
                         </span>
                         {loc.is_user_verified_member && (
-                          <Badge variant="verified" label="Member Allocation Visible" />
+                          <Badge variant="verified" label="Verified Member • Free Parking" />
                         )}
                       </div>
 
@@ -280,31 +280,79 @@ export function SearchPage() {
                     {/* Capacity & Price column */}
                     <div className="sm:text-right border-t sm:border-t-0 pt-3 sm:pt-0 border-warmgrey flex sm:flex-col justify-between items-end gap-3 shrink-0">
                       <div>
-                        <div className="text-xs text-charcoalMuted">Public Spaces</div>
-                        <div className="text-sm font-bold text-emerald-800">
-                          {loc.available_public} / {loc.public_capacity} available
-                        </div>
-                        {loc.is_user_verified_member && loc.member_capacity > 0 && (
-                          <div className="mt-1 text-xs text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                            Member: {loc.available_member} / {loc.member_capacity}
-                          </div>
+                        {loc.is_user_verified_member ? (
+                          <>
+                            <div className="text-xs font-semibold text-emerald-900">Member Space Available</div>
+                            <div className="text-sm font-bold text-emerald-800">
+                              {loc.available_member} / {loc.member_capacity} spots
+                            </div>
+                            <div className="text-[10px] text-charcoalMuted">
+                              Public: {loc.available_public} / {loc.public_capacity}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-xs text-charcoalMuted">Public Spaces</div>
+                            <div className="text-sm font-bold text-emerald-800">
+                              {loc.available_public} / {loc.public_capacity} available
+                            </div>
+                            {loc.member_capacity > 0 && (
+                              <div className="mt-0.5 text-[10px] text-charcoalMuted">
+                                Member: {loc.member_capacity} spots
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
 
                       <div>
-                        <div className="text-base font-black text-charcoal">
-                          ₹{loc.hourly_rate} <span className="text-xs font-normal text-charcoalMuted">/hr</span>
-                        </div>
-                        {loc.daily_rate && (
-                          <div className="text-[11px] text-charcoalMuted">
-                            Daily: ₹{loc.daily_rate}
+                        {loc.is_user_verified_member ? (
+                          <div className="text-right">
+                            {loc.member_benefit === 'discounted' ? (
+                              <>
+                                <div className="text-2xl font-black text-emerald-800 tracking-tight">
+                                  ₹{loc.member_hourly_rate ?? ((loc.hourly_rate * (1 - (loc.member_discount_percent || 0)/100)).toFixed(2))}
+                                  <span className="text-xs font-normal text-charcoalMuted">/hr</span>
+                                </div>
+                                <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-950 border border-blue-300">
+                                  {loc.member_discount_percent}% Member Discount
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="text-2xl font-black text-emerald-800 tracking-tight">
+                                  Free
+                                </div>
+                                <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-950 border border-emerald-300">
+                                  Member Free Parking
+                                </span>
+                              </>
+                            )}
+                            <div className="text-[11px] text-charcoalMuted line-through mt-0.5">
+                              Standard: ₹{loc.hourly_rate}/hr
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="text-base font-black text-charcoal">
+                              ₹{loc.hourly_rate} <span className="text-xs font-normal text-charcoalMuted">/hr</span>
+                            </div>
+                            {loc.daily_rate && (
+                              <div className="text-[11px] text-charcoalMuted">
+                                Daily: ₹{loc.daily_rate}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
 
                       <Link to={`/locations/${loc.id}`}>
                         <Button variant="primary" size="sm" className="font-bold">
-                          View & Book
+                          {loc.is_user_verified_member
+                            ? loc.member_benefit === 'free'
+                              ? 'Book Free Spot'
+                              : 'Book Member Spot'
+                            : 'View & Book'}
                         </Button>
                       </Link>
                     </div>

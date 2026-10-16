@@ -75,7 +75,12 @@ export function LocationDetailPage() {
               {location.locality}
             </span>
             {location.is_user_verified_member && (
-              <Badge variant="verified" label="Verified Member Allocation Active" />
+              <Badge
+                variant="verified"
+                label={location.member_benefit === 'discounted'
+                  ? `Verified Member • ${location.member_discount_percent || 0}% Discount Active`
+                  : 'Verified Member • Free Parking Active'}
+              />
             )}
           </div>
 
@@ -125,10 +130,36 @@ export function LocationDetailPage() {
         <div className="w-full md:w-80 p-5 bg-surfaceSoft border border-warmgrey rounded-lg flex flex-col justify-between shrink-0 shadow-xs">
           <div className="space-y-3">
             <div>
-              <div className="text-xs text-charcoalMuted">Starting from</div>
-              <div className="text-3xl font-black text-charcoal">
-                ₹{location.hourly_rate} <span className="text-xs font-normal text-charcoalMuted">/hour</span>
+              <div className="text-xs text-charcoalMuted">
+                {location.is_user_verified_member ? 'Member Tariff' : 'Starting from'}
               </div>
+              {location.is_user_verified_member ? (
+                <div>
+                  {location.member_benefit === 'discounted' ? (
+                    <div className="text-3xl font-black text-emerald-800 flex items-center gap-2">
+                      ₹{location.member_hourly_rate ?? ((location.hourly_rate * (1 - (location.member_discount_percent || 0)/100)).toFixed(2))}
+                      <span className="text-xs font-normal text-charcoalMuted">/hr</span>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-950 border border-blue-300">
+                        {location.member_discount_percent}% Off
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-3xl font-black text-emerald-800 flex items-center gap-2">
+                      Free
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-950 border border-emerald-300">
+                        Member Benefit
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-xs text-charcoalMuted line-through mt-0.5">
+                    Standard Rate: ₹{location.hourly_rate}/hour
+                  </div>
+                </div>
+              ) : (
+                <div className="text-3xl font-black text-charcoal">
+                  ₹{location.hourly_rate} <span className="text-xs font-normal text-charcoalMuted">/hour</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5 pt-2 border-t border-warmgrey text-xs">
@@ -181,7 +212,11 @@ export function LocationDetailPage() {
               onClick={handleOpenBooking}
               className="w-full font-bold shadow-sm py-3"
             >
-              Book Parking Space
+              {location.is_user_verified_member
+                ? location.member_benefit === 'free'
+                  ? 'Book Free Member Spot'
+                  : 'Book Member Spot'
+                : 'Book Parking Space'}
             </Button>
             {!user && (
               <p className="text-[11px] text-center text-charcoalMuted mt-2">

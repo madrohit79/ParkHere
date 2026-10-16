@@ -24,6 +24,7 @@ export function GateTerminalPage() {
 
   // Gate code state for pending arrivals: bookingId -> { spot_label: '', loading: false, generatedCode: null, deadline: null, error: '' }
   const [gateCodeState, setGateCodeState] = useState({});
+  const [serverTime, setServerTime] = useState(null);
 
   // Exit Modal state
   const [exitModalOpen, setExitModalOpen] = useState(false);
@@ -40,10 +41,16 @@ export function GateTerminalPage() {
     try {
       if (activeTab === 'pending') {
         const res = await apiRequest('/api/bookings/operator/pending');
-        if (res.success) setPendingList(res.data || []);
+        if (res.success) {
+          setPendingList(res.data || []);
+          if (res.server_time) setServerTime(res.server_time);
+        }
       } else if (activeTab === 'active') {
         const res = await apiRequest('/api/bookings/operator/active');
-        if (res.success) setActiveList(res.data || []);
+        if (res.success) {
+          setActiveList(res.data || []);
+          if (res.server_time) setServerTime(res.server_time);
+        }
       } else if (activeTab === 'completed') {
         const res = await apiRequest('/api/bookings/operator/completed');
         if (res.success) setCompletedList(res.data || []);
@@ -89,10 +96,12 @@ export function GateTerminalPage() {
             loading: false,
             generatedCode: res.data.gate_code,
             deadline: res.data.arrival_deadline,
+            server_time: res.data.server_time,
             spot_label: res.data.assigned_spot,
             error: ''
           }
         }));
+        if (res.data.server_time) setServerTime(res.data.server_time);
         setFeedback({
           type: 'success',
           message: `Gate Entry Code for vehicle ${booking.vehicle_number} generated: ${res.data.gate_code} (Assigned: ${res.data.assigned_spot}). Driver can now enter this code in their portal.`
@@ -236,11 +245,19 @@ export function GateTerminalPage() {
                         </span>
                         <div className="text-sm font-bold text-charcoal mt-0.5">{b.location_name}</div>
                       </div>
-                      <Countdown
-                        targetTime={state.deadline || b.arrival_deadline}
-                        label="Arrival Deadline"
-                        onExpire={fetchTerminalData}
-                      />
+                      {activeCode ? (
+                        <Countdown
+                          deadline={state.deadline || b.arrival_deadline}
+                          serverTime={state.server_time || b.server_time || serverTime}
+                          label="Arrival Deadline"
+                          onExpire={fetchTerminalData}
+                        />
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-300 shadow-xs">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                          Awaiting Code Generation
+                        </span>
+                      )}
                     </div>
 
                     <div className="mt-4 p-3 bg-surfaceSoft border border-warmgrey/70 rounded-md grid grid-cols-2 gap-2 text-xs">

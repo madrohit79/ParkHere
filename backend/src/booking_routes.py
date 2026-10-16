@@ -269,9 +269,10 @@ def operator_pending():
     if not cond: return fail('Unauthorized',403)
     found=query(f"""SELECT b.id,b.booking_reference,b.location_id,b.pool,b.vehicle_type,b.vehicle_number,b.start_time,b.end_time,b.arrival_window_start,b.arrival_deadline,b.failed_attempts,b.code_encrypted,b.assigned_spot,u.full_name AS customer_name,u.phone AS customer_phone,l.name AS location_name FROM bookings b JOIN parking_locations l ON l.id=b.location_id JOIN users u ON u.id=b.customer_id WHERE {cond} AND b.status='pending' AND b.arrival_deadline>=NOW() ORDER BY b.arrival_deadline ASC""",params)['rows']
     output=[]
+    now=datetime.now(timezone.utc)
     for row in found:
-        plain=decrypt_code(row.pop('code_encrypted',None)); row['current_code']=plain; row['has_code']=bool(plain); output.append(row)
-    return ok(output,server_time=datetime.now(timezone.utc))
+        plain=decrypt_code(row.pop('code_encrypted',None)); row['current_code']=plain; row['has_code']=bool(plain); row['server_time']=now; output.append(row)
+    return ok(output,server_time=now)
 
 @bp.get('/operator/active')
 @auth_required()

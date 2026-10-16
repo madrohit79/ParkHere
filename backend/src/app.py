@@ -17,8 +17,13 @@ def create_app():
     app=Flask(__name__)
     app.url_map.strict_slashes = False
     app.config['JSON_SORT_KEYS']=False
-    origins=[os.getenv('CORS_ORIGIN','http://localhost:5173'),'http://localhost:5173','http://127.0.0.1:5173']
-    CORS(app, resources={r'/api/*': {'origins': origins + ['null']}}, supports_credentials=True)
+    cors_env = os.getenv('CORS_ORIGIN', '')
+    if cors_env == '*':
+        origins = '*'
+    else:
+        env_origins = [o.strip() for o in cors_env.split(',') if o.strip()]
+        origins = list(set(env_origins + ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'null']))
+    CORS(app, resources={r'/api/*': {'origins': origins}}, supports_credentials=True)
     app.register_blueprint(auth_bp,url_prefix='/api/auth')
     app.register_blueprint(locations_bp,url_prefix='/api/locations')
     app.register_blueprint(membership_bp,url_prefix='/api/membership')

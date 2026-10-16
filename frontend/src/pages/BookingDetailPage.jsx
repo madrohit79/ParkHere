@@ -304,7 +304,11 @@ export function BookingDetailPage() {
             <div className="divide-y divide-warmgrey text-sm">
               <div className="py-2.5 flex justify-between">
                 <span className="text-charcoal">Base Reserved Amount:</span>
-                <span className="font-semibold text-charcoal">₹{booking.invoice.base_amount}</span>
+                <span className="font-semibold text-charcoal">
+                  {Number(booking.invoice.base_amount) === 0 && (booking.benefit_applied === 'free' || booking.pool === 'member')
+                    ? '₹0.00 (Member Free Parking)'
+                    : `₹${booking.invoice.base_amount}`}
+                </span>
               </div>
 
               {Number(booking.invoice.overtime_amount) > 0 && (
@@ -405,6 +409,14 @@ export function BookingDetailPage() {
             <div className="pt-2 flex justify-between">
               <span className="text-charcoalMuted">Membership Benefit:</span>
               <span className="font-bold text-charcoal capitalize">{booking.benefit_applied || 'None'}</span>
+            </div>
+            <div className="pt-2 flex justify-between">
+              <span className="text-charcoalMuted">Reserved Base Charge:</span>
+              <span className="font-bold text-charcoal">
+                {Number(booking.base_amount_snapshot) === 0 && (booking.benefit_applied === 'free' || booking.pool === 'member')
+                  ? 'Free (₹0.00)'
+                  : `₹${booking.base_amount_snapshot}`}
+              </span>
             </div>
           </div>
         </Card>

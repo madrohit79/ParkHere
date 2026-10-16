@@ -151,7 +151,11 @@ export function CustomerDashboard() {
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-warmgrey flex items-center justify-between">
-                      <span className="text-xs font-bold text-charcoal">₹{b.base_amount_snapshot} reserved</span>
+                      <span className="text-xs font-bold text-charcoal">
+                        {Number(b.base_amount_snapshot) === 0 && (b.benefit_applied === 'free' || b.pool === 'member')
+                          ? 'Free (Member Benefit)'
+                          : `₹${b.base_amount_snapshot} reserved`}
+                      </span>
                       <Link to={`/bookings/${b.id}`}>
                         <Button variant="primary" size="sm" className="font-bold">
                           Enter Gate Code & Details
@@ -225,7 +229,11 @@ export function CustomerDashboard() {
                     <div className="flex items-center gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-warmgrey">
                       <div className="text-right">
                         <div className="text-xs text-charcoalMuted">Billed Total</div>
-                        <div className="text-base font-black text-charcoal">₹{b.total_amount || b.base_amount_snapshot}</div>
+                        <div className="text-base font-black text-charcoal">
+                          {Number(b.total_amount || b.base_amount_snapshot) === 0 && (b.benefit_applied === 'free' || b.pool === 'member')
+                            ? 'Free'
+                            : `₹${b.total_amount || b.base_amount_snapshot}`}
+                        </div>
                       </div>
                       <Link to={`/bookings/${b.id}`}>
                         <Button variant="secondary" size="sm">View Receipt / Pay</Button>

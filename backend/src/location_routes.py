@@ -8,9 +8,10 @@ from .utils import parse_datetime, parse_time, format_time12, validate_operating
 bp = Blueprint('locations', __name__)
 
 
-def _member_org_ids(user_id):
-    return [r['org_id'] for r in query("""SELECT om.org_id FROM customer_memberships cm JOIN org_members om ON cm.org_member_id=om.id JOIN organisations o ON om.org_id=o.id
-        WHERE cm.customer_id=$1 AND cm.status='verified' AND om.is_active=TRUE AND o.is_active=TRUE AND o.approval_status='approved'""", [user_id])['rows']]
+def _member_org_benefits(user_id):
+    rows = query("""SELECT om.org_id, om.parking_benefit FROM customer_memberships cm JOIN org_members om ON cm.org_member_id=om.id JOIN organisations o ON om.org_id=o.id
+        WHERE cm.customer_id=$1 AND cm.status='verified' AND om.is_active=TRUE AND o.is_active=TRUE AND o.approval_status='approved'""", [user_id])['rows']
+    return {r['org_id']: (r['parking_benefit'] or 'free') for r in rows}
 
 
 def _location_owner_check(loc):
@@ -39,7 +40,7 @@ def search_locations():
     args = request.args
     start = parse_datetime(args.get('start_time'))
     end = parse_datetime(args.get('end_time')) if args.get('end_time') else start + timedelta(hours=float(args.get('duration_hours') or 1))
-    member_orgs = _member_org_ids(g.user['id']) if g.user and g.user['role'] == 'customer' else []
+    member_benefits = _member_org_benefits(g.user['id']) if g.user and g.user['role'] == 'customer' else {}
     conditions = ['l.is_active=TRUE', "((l.provider_type='owner' AND EXISTS (SELECT 1 FROM owner_profiles op WHERE op.user_id=l.owner_id AND op.approval_status='approved')) OR (l.provider_type='org' AND EXISTS (SELECT 1 FROM organisations org WHERE org.id=l.org_id AND org.approval_status='approved' AND org.is_active=TRUE)))"]
     params = [start, end]
     for key, expr in [('locality', "(l.locality ILIKE ${n} OR l.name ILIKE ${n} OR l.address ILIKE ${n})"), ('vehicle_type', "EXISTS (SELECT 1 FROM location_vehicle_types vt WHERE vt.location_id=l.id AND vt.vehicle_type=${n})"), ('max_price', 't.hourly_rate <= ${n}'), ('facility', "EXISTS (SELECT 1 FROM location_facilities lf WHERE lf.location_id=l.id AND lf.facility_code=${n} AND lf.is_offered=TRUE)")]:
@@ -63,11 +64,24 @@ def search_locations():
     found = query(sql, params)['rows']
     output = []
     for loc in found:
-        is_member = bool(loc.get('org_id') and loc['org_id'] in member_orgs)
+        org_id = loc.get('org_id')
+        is_member = bool(org_id and org_id in member_benefits)
+        benefit = member_benefits.get(org_id, 'none') if is_member else 'none'
         loc = loc_aliases(loc)
         loc['available_public'] = int(loc.get('available_public') or 0)
         loc['available_member'] = int(loc.get('available_member') or 0) if is_member else 0
         loc['is_user_verified_member'] = is_member
+        loc['member_benefit'] = benefit
+        if is_member:
+            if benefit == 'free':
+                loc['member_hourly_rate'] = 0.0
+            elif benefit == 'discounted':
+                disc = float(loc.get('member_discount_percent') or 0)
+                loc['member_hourly_rate'] = round(float(loc.get('hourly_rate') or 0) * (1 - disc / 100), 2)
+            else:
+                loc['member_hourly_rate'] = float(loc.get('hourly_rate') or 0)
+        else:
+            loc['member_hourly_rate'] = None
         check = validate_operating_hours(start, end, loc) if not loc['is_24_7'] else {'valid': True}
         loc['is_closed_for_requested_time'] = not check['valid']
         loc['closure_reason'] = check.get('message')
@@ -112,8 +126,18 @@ def location_detail(location_id):
     if g.user and g.user['role'] == 'customer' and loc.get('org_id'):
         m = query("""SELECT om.parking_benefit FROM customer_memberships cm JOIN org_members om ON cm.org_member_id=om.id JOIN organisations o ON o.id=om.org_id
             WHERE cm.customer_id=$1 AND om.org_id=$2 AND cm.status='verified' AND om.is_active=TRUE AND o.is_active=TRUE AND o.approval_status='approved'""", [g.user['id'], loc['org_id']])['rows']
-        if m: is_member, benefit = True, m[0]['parking_benefit']
+        if m: is_member, benefit = True, m[0]['parking_benefit'] or 'free'
     loc['is_user_verified_member'], loc['member_benefit'] = is_member, benefit
+    if is_member:
+        if benefit == 'free':
+            loc['member_hourly_rate'] = 0.0
+        elif benefit == 'discounted':
+            disc = float(loc.get('member_discount_percent') or 0)
+            loc['member_hourly_rate'] = round(float(loc.get('hourly_rate') or 0) * (1 - disc / 100), 2)
+        else:
+            loc['member_hourly_rate'] = float(loc.get('hourly_rate') or 0)
+    else:
+        loc['member_hourly_rate'] = None
     loc['available_public'] = int(loc.get('available_public') or 0)
     loc['available_member'] = int(loc.get('available_member') or 0) if is_member else 0
     return ok(loc_aliases(loc), server_time=datetime.now(timezone.utc))

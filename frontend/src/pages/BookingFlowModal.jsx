@@ -10,7 +10,9 @@ import { Spinner } from '../components/Spinner';
 export function BookingFlowModal({ isOpen, onClose, location }) {
   const navigate = useNavigate();
 
-  const [pool, setPool] = useState('public');
+  const isMember = Boolean(location?.is_user_verified_member);
+  const hasMemberCapacity = isMember && (location?.available_member ?? location?.member_capacity ?? 0) > 0;
+  const [pool, setPool] = useState(hasMemberCapacity ? 'member' : 'public');
   const [vehicleType, setVehicleType] = useState('four_wheeler');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [startChoice, setStartChoice] = useState('now');
@@ -23,6 +25,15 @@ export function BookingFlowModal({ isOpen, onClose, location }) {
   const [estimating, setEstimating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  // Sync pool when location or membership changes
+  useEffect(() => {
+    if (hasMemberCapacity) {
+      setPool('member');
+    } else {
+      setPool('public');
+    }
+  }, [hasMemberCapacity]);
 
   // Set default vehicle type on location change
   useEffect(() => {
@@ -157,8 +168,43 @@ export function BookingFlowModal({ isOpen, onClose, location }) {
           </div>
         )}
 
-        {/* Step 1: Select Pool */}
-        {location.member_capacity > 0 && (
+        {/* Step 1: Allocation Pool */}
+        {isMember ? (
+          hasMemberCapacity ? (
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 animate-pulse" />
+                <div>
+                  <div className="text-xs font-bold text-emerald-950">
+                    {location.member_benefit === 'discounted'
+                      ? `Member Allocation Pool (${location.member_discount_percent || 0}% Discount)`
+                      : 'Member Allocation Pool (Free Parking)'}
+                  </div>
+                  <div className="text-[11px] text-emerald-800">
+                    {location.member_benefit === 'discounted'
+                      ? `Your verified organisation membership applies a ${location.member_discount_percent || 0}% discount.`
+                      : 'Your verified organisation membership is applied automatically. Free parking is active.'}
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-black px-2 py-0.5 rounded bg-emerald-200 text-emerald-950 border border-emerald-300">
+                {location.member_benefit === 'discounted' ? `${location.member_discount_percent || 0}% OFF` : 'FREE'}
+              </span>
+            </div>
+          ) : (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0" />
+                <div className="text-xs font-bold text-amber-950">
+                  Member Capacity Full &bull; Booking via Public Pool
+                </div>
+              </div>
+              <p className="text-[11px] text-amber-900">
+                All member allocation spaces for this facility are currently reserved. You are booking an available space from the public pool at the standard rate.
+              </p>
+            </div>
+          )
+        ) : location.member_capacity > 0 ? (
           <div className="space-y-1">
             <label className="block text-xs font-bold text-charcoal">Inventory Allocation Pool</label>
             <div className="grid grid-cols-2 gap-2">
@@ -177,24 +223,17 @@ export function BookingFlowModal({ isOpen, onClose, location }) {
 
               <button
                 type="button"
-                disabled={!location.is_user_verified_member}
-                onClick={() => setPool('member')}
-                className={`px-3 py-2 text-xs font-semibold rounded border text-left transition-colors ${
-                  !location.is_user_verified_member
-                    ? 'opacity-50 cursor-not-allowed bg-stone-100 border-warmgrey'
-                    : pool === 'member'
-                    ? 'bg-blue-100 border-blue-500 text-blue-950'
-                    : 'bg-surface border-warmgrey text-charcoal hover:bg-stone-50'
-                }`}
+                disabled={true}
+                className="px-3 py-2 text-xs font-semibold rounded border text-left transition-colors opacity-50 cursor-not-allowed bg-stone-100 border-warmgrey"
               >
                 <div>Member Allocation</div>
                 <div className="text-[10px] text-charcoalMuted font-normal">
-                  {location.is_user_verified_member ? 'Verified benefit applied' : 'Requires verified membership'}
+                  Requires verified membership
                 </div>
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Step 2: Vehicle info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -359,7 +398,9 @@ export function BookingFlowModal({ isOpen, onClose, location }) {
             Cancel
           </Button>
           <Button type="submit" variant="primary" loading={submitting} className="font-bold">
-            Confirm & Reserve Space
+            {isMember && pool === 'member' && Number(estimate?.total_amount || 0) === 0
+              ? 'Confirm Free Reservation'
+              : 'Confirm & Reserve Space'}
           </Button>
         </div>
       </form>
