@@ -72,9 +72,10 @@ def _expiry_worker():
     while True:
         time.sleep(30)
         try:
-            query('SELECT expire_overdue_bookings()')
+            from .booking_routes import expire_and_complete_overdue_sessions
+            expire_and_complete_overdue_sessions()
         except Exception as exc:
-            logging.warning('Booking expiry sweep failed: %s',exc)
+            logging.warning('Booking expiry sweep failed: %s', exc)
 
 if os.getenv('DISABLE_EXPIRY_WORKER','0')!='1':
     worker=threading.Thread(target=_expiry_worker,name='booking-expiry',daemon=True)

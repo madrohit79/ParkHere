@@ -135,19 +135,122 @@ def create_booking():
         raise
 
 
+def expire_and_complete_overdue_sessions():
+    """
+    Idempotent transition for overdue bookings:
+    1. Pending bookings past arrival_deadline -> status = 'expired'
+    2. Active sessions past scheduled end_time -> status = 'completed', with invoice and pending payment
+    """
+    completed_count = 0
+    try:
+        query("SELECT expire_overdue_bookings()")
+        overdue_active = query("""
+            SELECT b.id, b.end_time, b.start_time, b.customer_id, b.assigned_spot,
+                   b.base_amount_snapshot, b.overtime_rate_snapshot,
+                   s.id AS session_id, s.entry_time, s.exit_time
+            FROM bookings b
+            LEFT JOIN parking_sessions s ON s.booking_id = b.id
+            WHERE b.status = 'active' AND b.end_time <= NOW()
+        """)['rows']
+
+        for row in overdue_active:
+            bid = row['id']
+            try:
+                with transaction() as tx:
+                    locked = tx.query("SELECT * FROM bookings WHERE id = $1 AND status = 'active' FOR UPDATE", [bid])['rows']
+                    if not locked:
+                        continue
+                    b = locked[0]
+
+                    sess = tx.query("SELECT * FROM parking_sessions WHERE booking_id = $1 FOR UPDATE", [bid])['rows']
+                    if not sess:
+                        sess_row = tx.query("""
+                            INSERT INTO parking_sessions(booking_id, entry_time, exit_time, verified_by_user_id, spot_label, notes)
+                            VALUES($1, $2, $3, $4, COALESCE($5, 'Bay-General'), 'Auto-completed on schedule end')
+                            RETURNING *
+                        """, [bid, b['start_time'], b['end_time'], b['customer_id'], b.get('assigned_spot')])['rows'][0]
+                    else:
+                        sess_row = sess[0]
+                        if not sess_row.get('exit_time'):
+                            sess_row = tx.query("""
+                                UPDATE parking_sessions SET exit_time = $1 WHERE id = $2 RETURNING *
+                            """, [b['end_time'], sess_row['id']])['rows'][0]
+
+                    entry_dt = parse_datetime(sess_row['entry_time'])
+                    exit_dt = parse_datetime(sess_row['exit_time'] or b['end_time'])
+                    duration = max(1, __import__('math').ceil((exit_dt - entry_dt).total_seconds() / 60))
+                    ot = overtime(b['end_time'], exit_dt, b['overtime_rate_snapshot'])
+
+                    addon_total = float(tx.query("""
+                        SELECT COALESCE(SUM(price_snapshot), 0.00) AS total_addons FROM booking_addons WHERE booking_id = $1
+                    """, [bid])['rows'][0]['total_addons'])
+
+                    base = float(b['base_amount_snapshot'])
+                    total = total_bill(base, ot['overtime_amount'], addon_total)
+
+                    inv = tx.query("SELECT * FROM invoices WHERE booking_id = $1", [bid])['rows']
+                    if not inv:
+                        inv_row = tx.query("""
+                            INSERT INTO invoices(booking_id, session_id, base_amount, overtime_minutes, overtime_amount, addons_amount, total_amount, actual_duration_minutes, generated_at)
+                            VALUES($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                            RETURNING *
+                        """, [bid, sess_row['id'], base, ot['overtime_minutes'], ot['overtime_amount'], addon_total, total, duration])['rows'][0]
+                    else:
+                        inv_row = inv[0]
+
+                    pmt = tx.query("SELECT * FROM payments WHERE invoice_id = $1", [inv_row['id']])['rows']
+                    if not pmt:
+                        tx.query("""
+                            INSERT INTO payments(invoice_id, booking_id, amount, status, payment_method)
+                            VALUES($1, $2, $3, 'pending', 'simulated')
+                        """, [inv_row['id'], bid, total])
+
+                    tx.query("UPDATE bookings SET status = 'completed', updated_at = NOW() WHERE id = $1", [bid])
+                    completed_count += 1
+            except Exception as e:
+                import logging
+                logging.warning("Auto-completion error for booking %s: %s", bid, e)
+    except Exception as exc:
+        import logging
+        logging.warning("Overdue sweep error: %s", exc)
+    return completed_count
+
+
 @bp.get('/mine')
 @auth_required()
 @roles('customer')
 def customer_bookings():
-    query('SELECT expire_overdue_bookings()')
-    found=query("""SELECT b.id,b.booking_reference,b.location_id,b.pool,b.vehicle_type,b.vehicle_number,b.start_time,b.end_time,b.status,b.arrival_window_start,b.arrival_deadline,b.rate_type,b.quantity,b.unit_price_snapshot,b.benefit_applied,b.discount_percent_snapshot,b.base_amount_snapshot,b.overtime_rate_snapshot,b.created_at,l.name AS location_name,l.locality,l.address,inv.id AS invoice_id,inv.total_amount,pay.status AS payment_status,pay.id AS payment_id FROM bookings b JOIN parking_locations l ON b.location_id=l.id LEFT JOIN invoices inv ON b.id=inv.booking_id LEFT JOIN payments pay ON inv.id=pay.invoice_id WHERE b.customer_id=$1 ORDER BY b.created_at DESC""",[g.user['id']])['rows']
+    expire_and_complete_overdue_sessions()
+    found=query("""SELECT 
+        b.id, b.booking_reference, b.location_id, b.pool, b.vehicle_type, b.vehicle_number,
+        b.start_time, b.end_time, b.status, b.arrival_window_start, b.arrival_deadline,
+        b.rate_type, b.quantity, b.unit_price_snapshot, b.benefit_applied,
+        b.discount_percent_snapshot, b.base_amount_snapshot, b.overtime_rate_snapshot,
+        b.assigned_spot, b.created_at,
+        l.name AS location_name, l.locality, l.address, l.provider_type,
+        COALESCE(o.name, u_owner.full_name) AS owner_name,
+        ps.id AS session_id, ps.entry_time, ps.exit_time, ps.spot_label,
+        inv.id AS invoice_id, inv.base_amount AS invoice_base_amount,
+        inv.overtime_minutes, inv.overtime_amount, inv.addons_amount,
+        inv.total_amount, inv.actual_duration_minutes, inv.generated_at AS invoice_generated_at,
+        pay.id AS payment_id, pay.status AS payment_status, pay.payment_method,
+        pay.transaction_ref, pay.paid_at
+    FROM bookings b
+    JOIN parking_locations l ON b.location_id=l.id
+    LEFT JOIN organisations o ON l.org_id=o.id
+    LEFT JOIN users u_owner ON l.owner_id=u_owner.id
+    LEFT JOIN parking_sessions ps ON ps.booking_id=b.id
+    LEFT JOIN invoices inv ON b.id=inv.booking_id
+    LEFT JOIN payments pay ON inv.id=pay.invoice_id
+    WHERE b.customer_id=$1
+    ORDER BY b.created_at DESC""",[g.user['id']])['rows']
     return ok(found,server_time=datetime.now(timezone.utc))
 
 
 @bp.get('/<int:booking_id>')
 @auth_required()
 def booking_detail(booking_id):
-    query('SELECT expire_overdue_bookings()')
+    expire_and_complete_overdue_sessions()
     found=query("""SELECT b.*,l.name AS location_name,l.locality,l.address,l.owner_id,l.org_id,u.full_name AS customer_name,u.email AS customer_email,u.phone AS customer_phone FROM bookings b JOIN parking_locations l ON l.id=b.location_id JOIN users u ON u.id=b.customer_id WHERE b.id=$1""",[booking_id])['rows']
     if not found: return fail('Booking not found',404)
     b=found[0]; customer_owner=b['customer_id']==g.user['id']; operator=_location_owner_allowed({'owner_id':b['owner_id'],'org_id':b['org_id']})
@@ -265,7 +368,7 @@ def _operator_filter():
 @roles('org_admin','owner')
 @approved_provider
 def operator_pending():
-    query('SELECT expire_overdue_bookings()'); cond,params=_operator_filter()
+    expire_and_complete_overdue_sessions(); cond,params=_operator_filter()
     if not cond: return fail('Unauthorized',403)
     found=query(f"""SELECT b.id,b.booking_reference,b.location_id,b.pool,b.vehicle_type,b.vehicle_number,b.start_time,b.end_time,b.arrival_window_start,b.arrival_deadline,b.failed_attempts,b.code_encrypted,b.assigned_spot,u.full_name AS customer_name,u.phone AS customer_phone,l.name AS location_name FROM bookings b JOIN parking_locations l ON l.id=b.location_id JOIN users u ON u.id=b.customer_id WHERE {cond} AND b.status='pending' AND b.arrival_deadline>=NOW() ORDER BY b.arrival_deadline ASC""",params)['rows']
     output=[]
@@ -279,7 +382,7 @@ def operator_pending():
 @roles('org_admin','owner')
 @approved_provider
 def operator_active():
-    cond,params=_operator_filter()
+    expire_and_complete_overdue_sessions(); cond,params=_operator_filter()
     if not cond: return fail('Unauthorized',403)
     found=query(f"""SELECT b.id AS booking_id,b.booking_reference,b.location_id,b.pool,b.vehicle_type,b.vehicle_number,b.start_time,b.end_time,b.base_amount_snapshot,b.overtime_rate_snapshot,s.id AS session_id,s.entry_time,s.spot_label,u.full_name AS customer_name,u.phone AS customer_phone,l.name AS location_name FROM bookings b JOIN parking_sessions s ON b.id=s.booking_id JOIN parking_locations l ON l.id=b.location_id JOIN users u ON u.id=b.customer_id WHERE {cond} AND b.status='active' AND s.exit_time IS NULL ORDER BY s.entry_time ASC""",params)['rows']
     return ok(found,server_time=datetime.now(timezone.utc))
@@ -289,7 +392,7 @@ def operator_active():
 @roles('org_admin','owner')
 @approved_provider
 def operator_completed():
-    cond,params=_operator_filter()
+    expire_and_complete_overdue_sessions(); cond,params=_operator_filter()
     if not cond: return fail('Unauthorized',403)
     found=query(f"""SELECT b.id AS booking_id,b.booking_reference,b.vehicle_number,b.vehicle_type,s.entry_time,s.exit_time,inv.id AS invoice_id,inv.base_amount,inv.overtime_minutes,inv.overtime_amount,inv.addons_amount,inv.total_amount,inv.actual_duration_minutes,pay.id AS payment_id,pay.status AS payment_status,u.full_name AS customer_name,l.name AS location_name FROM bookings b JOIN parking_locations l ON l.id=b.location_id JOIN parking_sessions s ON s.booking_id=b.id JOIN invoices inv ON b.id=inv.booking_id LEFT JOIN payments pay ON inv.id=pay.invoice_id JOIN users u ON b.customer_id=u.id WHERE {cond} AND b.status='completed' ORDER BY inv.generated_at DESC""",params)['rows']
     return ok(found)

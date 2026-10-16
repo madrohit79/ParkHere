@@ -36,7 +36,8 @@ def facilities_master():
 def search_locations():
     if g.user and g.user['role'] == 'org_admin':
         return fail('Organization administrators are not authorized to access public Find Parking search. Please use your administrative locations dashboard.', 403)
-    query('SELECT expire_overdue_bookings()')
+    from .booking_routes import expire_and_complete_overdue_sessions
+    expire_and_complete_overdue_sessions()
     args = request.args
     start = parse_datetime(args.get('start_time'))
     end = parse_datetime(args.get('end_time')) if args.get('end_time') else start + timedelta(hours=float(args.get('duration_hours') or 1))
